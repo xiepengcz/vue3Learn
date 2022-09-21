@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+
+<body>
+  <script>
+    // 存储副作用函数的桶
+    const bucket = new Set()
+
+    const data = { text: 'hello world' }
+    // 存储被注册的副作用函数
+    let activeEffect
+    // effect 函数用于注册副作用函数
+    function effect(fn) {
+      // 当调用 effect 时，将副作用函数赋值给activeEffect
+      activeEffect = fn
+      // 执行副作用函数
+      fn()
+    }
+    // 对原始数据的代理
+    const obj = new Proxy(data, {
+      get(target, key) {
+        // 将activeEffect 中存储的副作用函数收集到桶中，
+        if (activeEffect) {
+          bucket.add(activeEffect)// 新增
+        }
+        return target[key]
+      },
+      set(target, key, newVal) {
+        target[key] = newVal
+        // 把副作用函数从桶里取出并执行
+        bucket.forEach(fn => fn())
+        return true
+      }
+    })
+
+    effect(() => {
+      console.log('effect run') // 会打印2次
+      document.body.innerText = obj.text
+    })
+
+    setTimeout(() => {
+      // 副作用函数中并没有读取notExist属性的值
+      obj.notExist = 'hello vue3'
+    }, 1000)
+    // 问题在于 我们使用一个Set数据结构作为存储副作用函数的桶，我们没有在副作用函数与被操作的目标字段之间建立明确的联系
+    // 当读取属性时，无论读取哪个属性都会收集副作用函数到桶中，同理，设置属性时，也能把桶中的副作用函数取出并执行
+
+  </script>
+</body>
+
+</html>

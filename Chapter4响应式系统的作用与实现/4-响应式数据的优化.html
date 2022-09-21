@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+
+<body>
+  <script>
+    // 存储副作用函数的桶
+    const bucket = new WeakMap()
+
+    const data = { text: 'hello world' }
+    // 存储被注册的副作用函数
+    let activeEffect
+    // effect 函数用于注册副作用函数
+    function effect(fn) {
+      // 当调用 effect 时，将副作用函数赋值给activeEffect
+      activeEffect = fn
+      // 执行副作用函数
+      fn()
+    }
+    // 对原始数据的代理
+    const obj = new Proxy(data, {
+      get(target, key) {
+        console.log('get t', target, 'key', key);
+        track(target, key)
+        return target[key]
+      },
+      set(target, key, newVal) {
+        target[key] = newVal
+        trigger(target, key)
+      }
+    })
+    // 在get拦截函数内调用 track函数 追踪变化
+    function track(target, key) {
+      if (!activeEffect) return
+      // 根据target从桶中取出 depsMap, 它也是一个Map类型 key--> effects
+      let depsMap = bucket.get(target)
+      // 如果不存在depsMap 那么新建一个map并与target关联
+      if (!depsMap) {
+        bucket.set(target, (depsMap = new Map()))
+      }
+      // 再根据key 从depsMap 中取得 deps, 它是一个set类型
+      // 里面存储着所有与当前key相关联的副作用函数
+      let deps = depsMap.get(key)
+      // 如果deps不存在，同样新建一个set并与key关联
+      if (!deps) {
+        depsMap.set(key, (deps = new Set()))
+      }
+      deps.add(activeEffect)
+    }
+
+    // 在set拦截函数内调用 track函数 触发变化
+    function trigger(target, key) {
+
+      // 把副作用函数从桶里取出并执行
+      const depsMap = bucket.get(target)
+
+      if (!depsMap) return
+      const effects = depsMap.get(key)
+      effects && effects.forEach(fn => fn())
+    }
+
+
+    effect(() => {
+      console.log('effect run') // 会打印2次
+      document.body.innerText = obj.text
+    })
+
+    setTimeout(() => {
+      obj.text = 'hello vue3'
+    }, 1000)
+    /**
+     * 总结
+     * WeakMap 是用来存储响应式对象的, WeakMap 的key是弱引用，当target没有任何引用时 说明用户侧不再需要它，则进行垃圾回收
+     * Map 用于存储响应式对象下的key 例如 obj = {text:'123'}  中的 text
+     * Set 则是存储key对应的副作用函数 effect
+     *  
+    */
+  </script>
+</body>
+
+</html>
