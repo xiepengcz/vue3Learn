@@ -13,17 +13,22 @@
     // 存储副作用函数的桶
     const bucket = new WeakMap()
 
-    const data = { ok: true, text: 'hello world' }
-    // 存储被注册的副作用函数
+    const data = { foo: true, bar: true }
+    // 用一个全局变量存储当前激活的 effect 函数
     let activeEffect
-    // effect 函数用于注册副作用函数
+    // effect 栈
+    const effectStack = []
     function effect(fn) {
       const effectFn = () => {
-        // 调用cleanup函数完成清除工作
         cleanup(effectFn)
-        // 当effectFn执行时，将其设置为当前激活的副作用函数
+        // 当 effect 注册副作用函数时，将副作用函数赋值给 activeEffect
         activeEffect = effectFn
+        // 在调用副作用函数之前，将当前副作用函数压入栈中
+        effectStack.push(effectFn)
         fn()
+        // 在当前副作用函数执行完毕后，将当前副作用函数弹出栈，并把 activeEffect 还原为之前的值
+        effectStack.pop()
+        activeEffect = effectStack[effectStack.length - 1]
       }
       // activeEffect.deps 用来存储所有与该副作用函数相关联的依赖集合
       effectFn.deps = []
@@ -44,7 +49,7 @@
     // 对原始数据的代理
     const obj = new Proxy(data, {
       get(target, key) {
-        console.log('get t', target, 'key', key);
+        // console.log('get t', target, 'key', key);
         track(target, key)
         return target[key]
       },
@@ -78,32 +83,28 @@
 
     // 在set拦截函数内调用 track函数 触发变化
     function trigger(target, key) {
-
       // 把副作用函数从桶里取出并执行
       const depsMap = bucket.get(target)
-
       if (!depsMap) return
       const effects = depsMap.get(key)
-      effects && effects.forEach(fn => fn())
+      const effectsToRun = new Set(effects) // 构造 effectsToRun 集合并遍历它，代替直接遍历 effects 集合,解决无限循环问题
+      effectsToRun.forEach(effectFn => effectFn())
     }
 
+    // 全局变量
+    let temp1, temp2
 
     effect(() => {
-      console.log('effect run')
-      document.body.innerText = obj.ok ? obj.text : 'not' // 当obj.ok为false时，只会触发obj.ok的读取操作，修改obj.text时
+      console.log('effect1 run')
+      effect(() => {
+        console.log('effect2 run')
+        // 在effect2 中读取 obj.bar 
+        temp2 = obj.bar
+      })
+      // 在effect1 中读取 obj.foo 
+      temp1 = obj.foo
     })
-    setTimeout(() => {
-      obj.text = '123'
-    }, 500)
-    setTimeout(() => {
-      obj.ok = false
-    }, 1000)
-    setTimeout(() => {
-      obj.ok = false
-    }, 3000)
-    setTimeout(() => {
-      obj.text = '12313123'
-    }, 5000)
+    obj.foo = false
 
   </script>
 </body>

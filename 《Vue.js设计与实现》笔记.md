@@ -1115,33 +1115,158 @@ function cleanup(effectFn) {
 
 cleanup 函数接收副作用函数作为参数，遍历副作用函数的effectFn.deps 数组，该数组的每一项都是一个依赖集合，然后将该副作用函数从依赖集合中移除，最后重置effectFn.deps 数组。
 
+现在响应系统可以避免副作用函数产生遗留了。运行代码后，会发现目前的实现会导致无限循环执行，问题出在 trigger 函数中：
+
+```js
+function trigger(target, key) {
+  const depsMap = bucket.get(target)
+  if (!depsMap) return
+  const effects = depsMap.get(key)
+  effects && effects.forEach(fn => fn()) // 问题出在这句代码
+}
+```
+
+在 trigger 函数内部，遍历 effects 集合，它是一个 Set 集合，里面存储着副作用函数。当副作用函数执行时，会调用cleanup 进行清除，实际上就是从 effects 集合中将当前执行的副作用函数剔除，但是副作用函数的执行会导致其重新被收集到集合中，而此时对于 effects 集合的遍历仍在进行。
+
+语言规范中对此有明确的说明：在调用 forEach 遍历 Set 集合时，如果一个值已经被访问过了，但该值被删除并重新添加到集合，如果此时 forEach 遍历没有结束，那么该值会重新被访问。
+所以上面的代码会无限执行。解决办法就是可以构造另外一个 Set 集合并遍历它：
+
+```js
+function trigger(target, key) {
+	const depsMap = bucket.get(target)
+  if(!depsMap) return
+  const effects = depsMap.get(key)
+  const effectsToRun = new Set(effects) // 构造 effectsToRun 集合并遍历它，代替直接遍历 effects 集合
+  effectsToRun.forEach(effectFn => effectFn())
+}
+```
 
 
 
+### 4.5 嵌套的 effect 与 effect 栈
+
+```js
+effect(function effectFn1() {
+	effect(function effectFn2() {
+    // do sth ...
+  })
+  // do sth ...
+})
+```
+
+代码中 effectFn1 中嵌套了 effectFn2，effectFn1 的执行会导致 effectFn2的执行。
+
+当一个组件中渲染了另一个组件时，就发生了 effect 嵌套。但前文中的实现是不支持 effect 嵌套的。
+
+```js
+// 全局变量
+let temp1, temp2
+
+effect(() => {
+  console.log('effectFn1 run')
+  effect(()=>{
+    console.log('effectFn2 run')
+    // 在effect2 中读取 obj.bar 
+    temp2 = obj.bar
+  })
+  // 在effect1 中读取 obj.foo 
+  temp1 = obj.foo
+})
+obj.foo = false // 期望: effectFn1 执行后 effectFn2 也执行，现实是只执行了 effectFn2
+// 打印结果
+// effectFn1 run
+// effectFn2 run
+// effectFn2 run
+```
+
+前两次分别是副作用函数 effectFn1 与 effectFn2 初始执行的打印结果。第3次居然打印了 effect2，显示不符合预期。
+
+问题就出现在 effect 函数
+```js
+// 用一个全局变量存储当前激活的 effect 函数
+let activeEffect
+function effect(fn) {
+  const effectFn = () => {
+    cleanup(effectFn)
+    // 当 effect 注册副作用函数时，将副作用函数赋值给 activeEffect
+    activeEffect = effectFn
+    fn()
+  }
+  // activeEffect.deps 用来存储所有与该副作用函数相关联的依赖集合
+  effectFn.deps = []
+  // 执行副作用函数
+  effectFn()
+}
+```
+
+我们用全局变量 activeEffect 来存储通过 effect 函数注册的副作用函数，这意味着同一时刻 activeEffect 所存储的副作用函数只能有一个。当副作用函数发生嵌套时，内层副作用函数的执行会覆盖 activeEffect 的值。解决方法，新建一个副作用函数栈 effectStack：
+
+```js
+// 用一个全局变量存储当前激活的 effect 函数
+let activeEffect
+// effect 栈
+const effectStack = []
+
+function effect(fn) {
+  const effectFn = () => {
+    cleanup(effectFn)
+    // 当 effect 注册副作用函数时，将副作用函数赋值给 activeEffect
+    activeEffect = effectFn
+    // 在调用副作用函数之前，将当前副作用函数压入栈中
+    effectStack.push(effectFn)
+    fn()
+    // 在当前副作用函数执行完毕后，将当前副作用函数弹出栈，并把 activeEffect 还原为之前的值
+    effectStack.pop()
+    activeEffect = effectStack[effectStack.length - 1]
+  }
+  // activeEffect.deps 用来存储所有与该副作用函数相关联的依赖集合
+  effectFn.deps = []
+  // 执行副作用函数
+  effectFn()
+}
+```
+
+当前执行的副作用函数会被压入栈顶，这样当副作用函数发生嵌套时，栈底存储的就是外层副作用函数，而栈顶存储的则是内层副作用函数。
+
+```mermaid
+flowchart LR
+    activeEffect-->effectFn2
+    subgraph effectStack
+    effectFn2
+    effectFn1
+    end
+```
+
+当内层副作用函数 effectFn2 执行完毕后，它会被弹出栈，并将副作用函数 effectFn1 设置为 activeEffect。
+
+```mermaid
+flowchart LR
+    activeEffect-->effectFn1
+    subgraph effectStack
+    effectFn1
+    end
+    effectFn1--弹出-->effectFn2
+```
 
 
 
+### 4.6 避免无限递归循环
 
+```js
+effect(()=> obj.foo++)
+```
 
+effect 注册的副作用函数内有一个自增操作 obj.foo++ ，该操作会引起栈溢出`Uncaught RangeError: Maximum call stack size exceeded`
 
+搞清楚为什么？
 
+```js
+effect(()=>{
+  obj.foo = obj.foo + 1
+})
+```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+在这个语句中，既会读取 obj.foo 的值，又会设置 obj.foo 的值，而这就是导致问题的根本原因
 
 
 
