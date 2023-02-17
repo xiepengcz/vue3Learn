@@ -87,7 +87,13 @@
       const depsMap = bucket.get(target)
       if (!depsMap) return
       const effects = depsMap.get(key)
-      const effectsToRun = new Set(effects) // 构造 effectsToRun 集合并遍历它，代替直接遍历 effects 集合,解决无限循环问题
+      const effectsToRun = new Set()
+      // effects && effects.forEach(effectFn => {
+      //   // 如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行
+      //   if (effectFn !== activeEffect) {
+      //     effectsToRun.add(effectFn)
+      //   }
+      // })
       effectsToRun.forEach(effectFn => effectFn())
     }
 

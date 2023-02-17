@@ -18,11 +18,13 @@
     const obj = new Proxy(data, {
       get(target, key) {
         // 将副作用函数effect 添加到存储副作用函数的桶中
+        console.log('触发obj读取操作');
         bucket.add(effect)
         return target[key]
       },
       set(target, key, newVal) {
         target[key] = newVal
+        console.log('触发obj修改操作');
         // 把副作用函数从桶里取出并执行
         bucket.forEach(fn => fn())
         return true

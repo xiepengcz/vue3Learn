@@ -26,7 +26,7 @@
     // 对原始数据的代理
     const obj = new Proxy(data, {
       get(target, key) {
-        console.log('get t', target, 'key', key);
+        console.log('get', target, 'key', key);
         track(target, key)
         return target[key]
       },
@@ -57,10 +57,8 @@
 
     // 在set拦截函数内调用 track函数 触发变化
     function trigger(target, key) {
-
       // 把副作用函数从桶里取出并执行
       const depsMap = bucket.get(target)
-
       if (!depsMap) return
       const effects = depsMap.get(key)
       effects && effects.forEach(fn => fn())
@@ -69,21 +67,17 @@
 
     effect(() => {
       console.log('effect run')
-      document.body.innerText = obj.ok ? obj.text : 'not' // 当obj.ok为false时，只会触发obj.ok的读取操作，修改obj.text时
+      document.body.innerText = obj.ok ? obj.text : 'not' 
+      // 当obj.ok为false时，只会触发obj.ok的读取操作，修改obj.text时 因为obj.ok为false，所以不应该执行副作用函数，但这里执行了
     })
-    // setTimeout(() => {
-    //   data.text = '123'
-    // }, 500)
+
     setTimeout(() => {
       obj.ok = false
-    }, 1000)
-    // setTimeout(() => {
-    //   data.ok = false
-    // }, 3000)
-    // setTimeout(() => {
-    //   data.text = '12313123'
-    // }, 5000)
-
+    }, 3000)
+    // 修改obj.text时 因为obj.ok为false，所以不应该执行副作用函数，但这里执行了
+    setTimeout(() => {
+      obj.text = 'hello vue3'
+    }, 5000)
   </script>
 </body>
 

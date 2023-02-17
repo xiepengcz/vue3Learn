@@ -1,13 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Document</title>
 </head>
-
 <body>
   <script>
     // 存储副作用函数的桶
@@ -56,24 +54,21 @@
 
     // 在set拦截函数内调用 track函数 触发变化
     function trigger(target, key) {
-
       // 把副作用函数从桶里取出并执行
       const depsMap = bucket.get(target)
-
       if (!depsMap) return
       const effects = depsMap.get(key)
       effects && effects.forEach(fn => fn())
     }
 
-
     effect(() => {
-      console.log('effect run') // 会打印2次
+      console.log('effect run') 
       document.body.innerText = obj.text
     })
 
     setTimeout(() => {
       obj.text = 'hello vue3'
-    }, 1000)
+    }, 3000)
     /**
      * 总结
      * WeakMap 是用来存储响应式对象的, WeakMap 的key是弱引用，当target没有任何引用时 说明用户侧不再需要它，则进行垃圾回收

@@ -1266,7 +1266,76 @@ effect(()=>{
 })
 ```
 
-在这个语句中，既会读取 obj.foo 的值，又会设置 obj.foo 的值，而这就是导致问题的根本原因
+在这个语句中，既会读取 obj.foo 的值，又会设置 obj.foo 的值，首先读取 obj.foo 的值，这会触发 track 操作，将当前副作用函数收集到“桶”中，接着将其加 1 后再赋值给 obj.foo，此时会触发 trigger 操作，即把“桶”中的副作用函数取出并执行。但问题是该副作用函数正在执行中，还没有执行完毕，就要开始下一次的执行。这样会导致无限递归地调用自己，于是就产生了栈溢出。因为读取和设置操作都是在一个副作用函数中执行。
+
+可以在 trigger 动作发生时增加守卫条件：
+
+```js
+function trigger(target,key) {
+  const depsMap = bucket.get(target)
+  if(!depsMap) return
+  const effects = depsMap.get(key)
+  const effectsToRun = new Set()
+  effects && effects.forEach(effectFn => {
+    // 如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行
+    if(effectFn !== activeEffect) {
+      effectsToRun.add(effectFn)
+    }
+  })
+  effectsToRun.forEach(effectFn=> effectFn())
+}
+```
+
+
+
+### 4.7 调度执行
+
+可调试性指的是当trigger 动作触发副作用函数重新执行时，有能力决定副作用函数执行的时机、次数以及方式。
+
+```js
+const data = { foo: 1 }
+const obj = new Proxy(data, {/* ... */})
+effect(()=>{
+	console.log(obj.foo)
+})
+obj.foo++
+console.log('结束了')
+```
+
+上面代码的执行顺序为
+
+```
+1
+2
+结束了
+```
+
+如果要改成如下的执行顺序，在不调整代码的情况下
+
+```
+1
+结束了
+2
+```
+
+可以为effect函数设计一个选项参数 options, 允许用户指定调度器：
+
+```javascript
+effect(
+	()=>{
+		console.log(obj.foo)
+	},
+	// options
+	{
+	// 调度器 scheduler 是一个函数
+    scheduler(fn) {
+      // ...
+    }
+	}
+)
+```
+
+
 
 
 

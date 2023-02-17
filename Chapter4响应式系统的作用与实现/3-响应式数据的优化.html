@@ -48,7 +48,6 @@
         target[key] = newVal
         // 把副作用函数从桶里取出并执行
         const depsMap = bucket.get(target)
-
         if (!depsMap) return
         const effects = depsMap.get(key)
         effects && effects.forEach(fn => fn())
