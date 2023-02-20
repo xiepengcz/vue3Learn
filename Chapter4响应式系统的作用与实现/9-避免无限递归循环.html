@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 
 <head>
   <meta charset="UTF-8">
@@ -88,16 +88,14 @@
       if (!depsMap) return
       const effects = depsMap.get(key)
       const effectsToRun = new Set()
-      // effects && effects.forEach(effectFn => {
-      //   // 如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行
-      //   if (effectFn !== activeEffect) {
-      //     effectsToRun.add(effectFn)
-      //   }
-      // })
+      effects && effects.forEach(effectFn => {
+        // 如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行
+        if (effectFn !== activeEffect) {
+          effectsToRun.add(effectFn)
+        }
+      })
       effectsToRun.forEach(effectFn => effectFn())
     }
-
-
 
     effect(() => {
       console.log('foo++');

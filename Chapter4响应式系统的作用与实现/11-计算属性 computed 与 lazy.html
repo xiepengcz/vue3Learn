@@ -13,22 +13,38 @@
     // 存储副作用函数的桶
     const bucket = new WeakMap()
 
-    const data = { ok: true, text: 'hello world' }
-    // 存储被注册的副作用函数
+    const data = { foo: 1, bar: 2 }
+    // 用一个全局变量存储当前激活的 effect 函数
     let activeEffect
-    // effect 函数用于注册副作用函数
-    function effect(fn) {
+    // effect 栈
+    const effectStack = []
+    function effect(fn, options = {}) {
       const effectFn = () => {
-        // 调用cleanup函数完成清除工作
+        console.log('effectFn');
         cleanup(effectFn)
-        // 当effectFn执行时，将其设置为当前激活的副作用函数
+        // 当 effect 注册副作用函数时，将副作用函数赋值给 activeEffect
         activeEffect = effectFn
-        fn()
+        // 在调用副作用函数之前，将当前副作用函数压入栈中
+        effectStack.push(effectFn)
+        // 将 fn 的执行结果存储到 res 中
+        const res = fn()
+        // 在当前副作用函数执行完毕后，将当前副作用函数弹出栈，并把 activeEffect 还原为之前的值
+        effectStack.pop()
+        activeEffect = effectStack[effectStack.length - 1]
+        // res 作为 effectFn 的返回值
+        return res
       }
+      // 将 options 挂载到 effectFn 上
+      effectFn.options = options
       // activeEffect.deps 用来存储所有与该副作用函数相关联的依赖集合
       effectFn.deps = []
-      // 执行副作用函数
-      effectFn()
+      // 只有非 lazy 的时候，才执行
+      if (!options.lazy) {
+        // 执行副作用函数
+        effectFn()
+      }
+      // 将副作用函数作为返回值返回
+      return effectFn
     }
     function cleanup(effectFn) {
       // 遍历effectFn.deps数组
@@ -44,7 +60,7 @@
     // 对原始数据的代理
     const obj = new Proxy(data, {
       get(target, key) {
-        console.log('get t', target, 'key', key);
+        // console.log('get t', target, 'key', key);
         track(target, key)
         return target[key]
       },
@@ -82,31 +98,40 @@
       const depsMap = bucket.get(target)
       if (!depsMap) return
       const effects = depsMap.get(key)
-      const effectsToRun = new Set(effects) // 构造 effectsToRun 集合并遍历它，代替直接遍历 effects 集合,解决无限循环问题
-      effectsToRun.forEach(effectFn => effectFn())
+      const effectsToRun = new Set()
+      effects && effects.forEach(effectFn => {
+        // 如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行
+        if (effectFn !== activeEffect) {
+          effectsToRun.add(effectFn)
+        }
+      })
+      effectsToRun.forEach(effectFn => {
+        // 如果一个副作用函数存在调度器，则调用该调度器，并将副作用函数作为参数传递
+        if (effectFn.options.scheduler) {
+          effectFn.options.scheduler(effectFn)
+        } else effectFn()
+      })
     }
 
 
-    effect(() => {
-      console.log('effect run')
-      document.body.innerText = obj.ok ? obj.text : 'not' // 当obj.ok为false时，只会触发obj.ok的读取操作，修改obj.text时
-    })
-    setTimeout(() => {
-      obj.text = '123'
-    }, 500)
-    setTimeout(() => {
-      obj.ok = false
-    }, 1000)
-    setTimeout(() => {
-      obj.text = '11111111'
-    }, 3000)
-    // setTimeout(() => {
-    //   obj.ok = true
-    // }, 5000)
-    setTimeout(() => {
-      obj.text = '2222222'
-    }, 8000)
-    // 每次副作用函数执行时，先把它从所有与之关联的依赖集合中删除,当副作用函数执行完毕后，会重新建立联系，但在新的联系中不会包含遗留的副作用函数
+    function computed(getter) {
+      // 把 getter 作为副作用函数，创建一个 lazy 的 effect
+      const effectFn = effect(getter, {
+        lazy: true
+      })
+      const obj = {
+        // 当读取 value 时才执行 effectFn
+        get value() {
+          return effectFn()
+        }
+      }
+      return obj
+    }
+
+    const sumRes = computed(() => obj.foo + obj.bar)
+    console.log(sumRes.value)  // 3
+    console.log(sumRes.value)  // 3
+    console.log(sumRes.value)  // 3
 
   </script>
 </body>
