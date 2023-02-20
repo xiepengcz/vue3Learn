@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+
+<body>
+  <div id="app">1</div>
+  <script>
+    const data = { foo: 1, bar: true }
+    const bucket = new WeakMap()
+
+    let activeEffect
+    let obj = new Proxy(data, {
+      get(target, key, receiver) {
+        console.log('gggg', key);
+        track(target, key)
+        return target[key]
+      },
+      set(target, key, value) {
+        console.log('sss', key);
+        target[key] = value;
+        trigger(target, key)
+      }
+    })
+    // 跟踪 
+    function track(target, key) {
+      if (!activeEffect) return
+      let depsMap = bucket.get(target)
+      if (!depsMap) bucket.set(target, depsMap = new Map())
+      let depsSet = depsMap.get(key)
+      if (!depsSet) depsMap.set(key, depsSet = new Set())
+      depsSet.add(activeEffect)
+    }
+    // 触发
+    function trigger(target, key) {
+      let depsMap = bucket.get(target)
+      if (!depsMap) return
+      let depsSet = depsMap.get(key)
+      depsSet && depsSet.forEach(fn => fn())
+    }
+
+    //当副作用函数执行完毕后，重新建立联系，但在新的联系中不会包含遗留的副作用函数，每次副作用函数执行前，将其从相关联的依赖集合中移除
+    function effect(fn) {
+      const effectFn = () => {
+        // 当 effectFn 执行时，将其设置为当前激活的副作用函数
+        activeEffect = effectFn
+        fn()
+      }
+      // activeEffect.deps 用来存储所有与该副作用函数相关联的依赖集合
+      effectFn.deps = []
+      // 执行副作用函数
+      effectFn()
+    }
+    effect(() => {
+      document.querySelector('#app').textContent = obj.bar ? obj.foo : 'hello'
+    })
+    // obj.foo = 3
+    obj.bar = false
+    obj.foo = 5
+
+  </script>
+</body>
+
+</html>
