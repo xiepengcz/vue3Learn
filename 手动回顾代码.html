@@ -9,59 +9,60 @@
 </head>
 
 <body>
-  <div id="app">1</div>
   <script>
-    const data = { foo: 1, bar: true }
-    const bucket = new WeakMap()
-
+    // 使用 proxy 代理对象
+    // 添加一个effect函数 用来执行副作用函数
+    // 当执行get操作时，将副作用函数添加到桶中
+    // 当执行set操作时，将副作用函数从桶中取出执行
+    let data = { foo: true, text: 'hhhhh' }
+    // 用来存放临时的副作用函数
     let activeEffect
-    let obj = new Proxy(data, {
-      get(target, key, receiver) {
-        console.log('gggg', key);
-        track(target, key)
+    let bucket = new WeakMap() // 用weakMap来处理 bucket.[key] 为 对象，value为Map,Map[key] 为对象值， value 为 Set, Set的内容为对象值的 副作用函数列表
+    // 副作用函数
+
+    // 分支切换
+    function effect(fn) {
+      activeEffect = fn
+      fn()
+    }
+    const obj = new Proxy(data, {
+      get(target, key) {
+        let depsMap = bucket.get(target)
+
+        if (!depsMap) bucket.set(target, (depsMap = new Map()))
+
+        let deps = depsMap.get(key)
+
+        if (!deps) depsMap.set(key, (deps = new Set()))
+
+        if (activeEffect) deps.add(activeEffect)
+
         return target[key]
       },
       set(target, key, value) {
-        console.log('sss', key);
-        target[key] = value;
-        trigger(target, key)
-      }
-    })
-    // 跟踪 
-    function track(target, key) {
-      if (!activeEffect) return
-      let depsMap = bucket.get(target)
-      if (!depsMap) bucket.set(target, depsMap = new Map())
-      let depsSet = depsMap.get(key)
-      if (!depsSet) depsMap.set(key, depsSet = new Set())
-      depsSet.add(activeEffect)
-    }
-    // 触发
-    function trigger(target, key) {
-      let depsMap = bucket.get(target)
-      if (!depsMap) return
-      let depsSet = depsMap.get(key)
-      depsSet && depsSet.forEach(fn => fn())
-    }
+        target[key] = value
+        let depsMap = bucket.get(target)
+        if (!depsMap) return
 
-    //当副作用函数执行完毕后，重新建立联系，但在新的联系中不会包含遗留的副作用函数，每次副作用函数执行前，将其从相关联的依赖集合中移除
-    function effect(fn) {
-      const effectFn = () => {
-        // 当 effectFn 执行时，将其设置为当前激活的副作用函数
-        activeEffect = effectFn
-        fn()
+        let deps = depsMap.get(key)
+        deps && deps.forEach(i => {
+          i()
+        })
+        return true
       }
-      // activeEffect.deps 用来存储所有与该副作用函数相关联的依赖集合
-      effectFn.deps = []
-      // 执行副作用函数
-      effectFn()
-    }
-    effect(() => {
-      document.querySelector('#app').textContent = obj.bar ? obj.foo : 'hello'
     })
-    // obj.foo = 3
-    obj.bar = false
-    obj.foo = 5
+    effect(() => {
+      console.log('effect');
+      document.body.innerText = obj.foo ? obj.text : 'hello world'
+    })
+    setTimeout(() => {
+      obj.foo = false
+      // obj.text = '123'
+    }, 1000)
+    setTimeout(() => {
+      obj.text = '123'
+    }, 2000)
+
 
   </script>
 </body>

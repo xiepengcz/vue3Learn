@@ -65,10 +65,9 @@
     }, 1000)
     /**
      * 总结
-     * WeakMap 是用来存储响应式对象的, WeakMap 的key是弱引用，当target没有任何引用时 说明用户侧不再需要它，则进行垃圾回收
+     * WeakMap 是用来存储响应式对象的, 因为 WeakMap 的key是弱引用，当target没有任何引用时，说明用户侧不再需要它，则进行垃圾回收
      * Map 用于存储响应式对象下的key 例如 obj = {text:'123'}  中的 text
      * Set 则是存储key对应的副作用函数 effect
-     *  
     */
   </script>
 </body>

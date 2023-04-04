@@ -24,7 +24,7 @@
     // 对原始数据的代理
     const obj = new Proxy(data, {
       get(target, key) {
-        console.log('get t', target, 'key', key);
+        console.log('get t', target===data, 'key', key);
         track(target, key)
         return target[key]
       },
